@@ -1,1 +1,0 @@
-run sql select d.name,n.dnorpattern as DN from device as d, numplan as n, devicenumplanmap as dnpm where dnpm.fkdevice = d.pkid and dnpm.fknumplan = n.pkid and d.tkclass = 1 and n.dnorpattern in (select dnorpattern from numplan group by dnorpattern having count(dnorpattern) > 1) order by DN
