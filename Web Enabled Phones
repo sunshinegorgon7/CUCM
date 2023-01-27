@@ -1,0 +1,1 @@
+run sql SELECT Device.name,TypeModel.name,"Web Enabled" FROM Device,TypeModel,DeviceXml4k WHERE DeviceXml4k.fkDevice=Device.pkid AND Device.tkModel=TypeModel.enum AND xml LIKE "%0%"
