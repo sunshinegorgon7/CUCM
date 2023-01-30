@@ -1,0 +1,31 @@
+#!/bin/sh
+
+#Variables
+SIPName=$1
+
+# Input file
+FILE=/usr/local/nagios/libexec/check_sip/pub_sip_status_nagios
+
+# How many seconds before file is deemed "older"
+OLDTIME=300
+ONE=1
+
+# Get current and file times
+CURTIME=$(date +%s)
+FILETIME=$(stat $FILE -c %Y)
+TIMEDIFF=$(expr $CURTIME - $FILETIME)
+
+# Get SIP status
+STATUS=$(cat $FILE | grep $SIPName | cut -d',' -f11 | tr -d ' ' )
+
+# Check if file older
+if [ $TIMEDIFF -gt $OLDTIME ]; then
+   echo "Parameters UNKNWON - status is not up to date";
+   exit 3;
+elif [[ $STATUS -eq $ONE ]]; then
+   echo "Parameters OK - $SIPName is UP";
+   exit 0;
+else
+   echo "Parameters CRITICAL - $SIPName is DOWN";
+   exit 2;
+fi
