@@ -1,53 +1,60 @@
-#!/usr/bin/python3
+from zeep import Client
+from zeep.cache import SqliteCache
+from zeep.transports import Transport
+from zeep.exceptions import Fault
+from zeep.plugins import HistoryPlugin
+from requests import Session
+from requests.auth import HTTPBasicAuth
+from urllib3 import disable_warnings
+from urllib3.exceptions import InsecureRequestWarning
+from lxml import etree
+ 
+disable_warnings(InsecureRequestWarning)
 
-import paramiko
-from paramiko_expect import SSHClientInteraction
-import sys, traceback
-from shutil import copyfile
+# Cluster specific variables
+username = 'username'
+password = 'password'
+server = 'PublisherIP'
 
-def main():
+wsdl = f'https://{server}:8443/realtimeservice2/services/RISService70?wsdl'
+location = f'https://{server}:8443/realtimeservice2/services/RISService70'
+binding = '{http://schemas.cisco.com/ast/soap}RisBinding'
 
-        UNKNOWN = 3
-        OK = 0
-        WARNING = 1
-        CRITICAL = 2
+session = Session()
+session.verify = False
+session.auth = HTTPBasicAuth(username, password)
 
-        PUB = "1.1.1.1"
-        SUB = "2.2.2.2"
-        un = "readuser"
-        pw = "readuserpass"
-        PROMPT = "admin:"
+transport = Transport(cache=SqliteCache(), session=session, timeout=20)
+history = HistoryPlugin()
+client = Client(wsdl=wsdl, transport=transport, plugins=[history])
+service = client.create_service(binding, location)
 
-        try:
-                with open('/usr/local/nagios/libexec/check_sip/pub_sip_status','w') as pss:
-                        client = paramiko.SSHClient()
-                        client.load_system_host_keys()
-                        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                        client.connect(hostname=PUB,
-                                                username=un, password=pw)
-                        with SSHClientInteraction(client, timeout=60, display=False) as interact:
-                                                interact.expect(PROMPT)
-                                                interact.send('show risdb query sip')
-                                                interact.expect(PROMPT, timeout=20)
-                                                cmd_output_ls = interact.current_output_clean
-                        client.close()
-                        pss.write(cmd_output_ls)
-                copyfile('/usr/local/nagios/libexec/check_sip/pub_sip_status','/usr/local/nagios/libexec/check_sip/pub_sip_status_nagios')
+CmSelectionCriteria = {
+    'MaxReturnedDevices': '1000',
+    'DeviceClass': 'SIPTrunk',
+    'Model': '131',
+    'Status': 'Any',
+    'NodeName': '',
+    'SelectBy': 'IPV4Address',
+    'SelectItems': {
+        'item': [
+            '*'
+        ]
+    },
+    'Protocol': 'Any',
+    'DownloadStatus': 'Any'
+}
 
-                with open('/usr/local/nagios/libexec/check_sip/sub_sip_status','w') as sss:
-                        client.connect(hostname=SUB,
-                                                username=un, password=pw)
-                        with SSHClientInteraction(client, timeout=60, display=False) as interact:
-                                                interact.expect(PROMPT)
-                                                interact.send('show risdb query sip')
-                                                interact.expect(PROMPT, timeout=20)
-                                                cmd_output_ls = interact.current_output_clean
-                        client.close()
-                        sss.write(cmd_output_ls)
-                copyfile('/usr/local/nagios/libexec/check_sip/sub_sip_status','/usr/local/nagios/libexec/check_sip/sub_sip_status_nagios')
+StateInfo = ''
 
-        except Exception:
-                traceback.print_exc()
-
-if __name__ == '__main__':
-        main()
+try:
+    resp = service.selectCmDevice(CmSelectionCriteria=CmSelectionCriteria, StateInfo=StateInfo)
+except Fault as e:
+    print(f'Error: {e}')
+else:
+    servers=resp.SelectCmDeviceResult.CmNodes.item
+    for server in servers:
+        if server.ReturnCode == 'Ok':
+            with open(f'/usr/local/nagios/libexec/check_sip/{server.Name}_sip_status','w') as srvfile:
+                for trunk in server.CmDevices.item:
+                     srvfile.write(f'{server.Name}:{trunk.Name}:{trunk.Status}\n')
